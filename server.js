@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
 const app = express();
 
 // Use dynamic port from environment variable or default to 3000 for local testing
@@ -9,7 +10,12 @@ const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve index.html for the root route
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // Database setup
 const db = new sqlite3.Database(':memory:', (err) => {
@@ -57,7 +63,7 @@ db.serialize(() => {
 // Authentication middleware
 const authenticate = (req, res, next) => {
   const token = req.headers['authorization']?.split(' ')[1];
-  if (!token && req.path !== '/api/login') return res.status(401).send('Access denied');
+  if (!token && req.path !== '/api/login' && req.path !== '/') return res.status(401).send('Access denied');
   try {
     if (token) {
       const decoded = jwt.verify(token, 'secret_key');
@@ -116,7 +122,7 @@ app.post('/api/users', authenticate, async (req, res) => {
 });
 
 app.get('/api/alerts', authenticate, (req, res) => {
-  db.all(`SELECT * FROM alerts`, [], (err, rows) => {
+  db.all(`SELECT * FROM alerts`, [], (err> rows) => {
     if (err) return res.status(500).send('Server error');
     res.json(rows);
   });
