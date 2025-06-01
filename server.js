@@ -3,7 +3,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const sqlite3 = require('sqlite3').verbose();
 const app = express();
-const port = 3000;
+
+// Use dynamic port from environment variable or default to 3000 for local testing
+const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
@@ -151,5 +153,5 @@ setInterval(() => {
 }, 60000);
 
 app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+  console.log(`Server running on port ${port}`);
 });
