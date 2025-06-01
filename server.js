@@ -122,7 +122,7 @@ app.post('/api/users', authenticate, async (req, res) => {
 });
 
 app.get('/api/alerts', authenticate, (req, res) => {
-  db.all(`SELECT * FROM alerts`, [], (err> rows) => {
+  db.all(`SELECT * FROM alerts`, [], (err, rows) => {
     if (err) return res.status(500).send('Server error');
     res.json(rows);
   });
@@ -145,6 +145,7 @@ app.get('/api/logs/export', authenticate, (req, res) => {
 // Simulate real-time device status updates
 setInterval(() => {
   db.all(`SELECT * FROM devices`, [], (err, devices) => {
+    if (err) return;
     devices.forEach(device => {
       const status = Math.random() > 0.2 ? 'Online' : 'Offline';
       db.run(`UPDATE devices SET status = ? WHERE id = ?`, [status, device.id]);
