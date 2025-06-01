@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NMS - PON Network Management</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Arial', sans-serif; }
+    #network { height: 400px; border: 1px solid #ccc; }
+    .sidebar { transition: width 0.3s; }
+    @media (max-width: 768px) {
+      .sidebar { width: 100%; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div class="flex h-screen">
+    <!-- Sidebar -->
+    <div class="sidebar w-64 bg-gray-800 text-white p-4">
+      <h2 class="text-xl font-bold mb-4">NMS Dashboard</h2>
+      <nav>
+        <ul>
+          <li><a href="#dashboard" class="block py-2 hover:bg-gray-700">Dashboard</a></li>
+          <li><a href="#topology" class="block py-2 hover:bg-gray-700">PON Topology</a></li>
+          <li><a href="#devices" class="block py-2 hover:bg-gray-700">Devices</a></li>
+          <li><a href="#users" class="block py-2 hover:bg-gray-700">User Management</a></li>
+          <li><a href="#alerts" class="block py-2 hover:bg-gray-700">Alerts</a></li>
+          <li><a href="#logs" class="block py-2 hover:bg-gray-700">Logs</a></li>
+        </ul>
+      </nav>
+    </div>
+    <!-- Main Content -->
+    <div class="flex-1 p-6">
+      <header class="bg-white shadow p-4 mb-4">
+        <h1 class="text-2xl font-bold">Network Management System</h1>
+        <div class="flex justify-between">
+          <span id="user-role">Logged in as: Guest</span>
+          <button id="logout" class="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
+        </div>
+      </header>
+      <!-- Dashboard -->
+      <section id="dashboard" class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">Dashboard</h2>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="bg-white p-4 shadow rounded">
+            <h3 class="font-bold">Total OLTs</h3>
+            <p id="olt-count">0</p>
+          </div>
+          <div class="bg-white p-4 shadow rounded">
+            <h3 class="font-bold">Total ONUs</h3>
+            <p id="onu-count">0</p>
+          </div>
+          <div class="bg-white p-4 shadow rounded">
+            <h3 class="font-bold">Active Alerts</h3>
+            <p id="alert-count">0</p>
+          </div>
+          <div class="bg-white p-4 shadow rounded">
+            <h3 class="font-bold">Uptime</h3>
+            <p id="uptime">0%</p>
+          </div>
+        </div>
+      </section>
+      <!-- PON Topology -->
+      <section id="topology" class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">PON Topology</h2>
+        <div id="network"></div>
+      </section>
+      <!-- Device Management -->
+      <section id="devices" class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">Device Management</h2>
+        <button id="add-device" class="bg-blue-500 text-white px-4 py-2 rounded mb-4">Add Device</button>
+        <table class="w-full bg-white shadow rounded">
+          <thead>
+            <tr class="bg-gray-200">
+              <th class="p-2">Device</th>
+              <th class="p-2">Type</th>
+              <th class="p-2">Status</th>
+              <th class="p-2">IP Address</th>
+              <th class="p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="device-table"></tbody>
+        </table>
+      </section>
+      <!-- User Management -->
+      <section id="users" class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">User Management</h2>
+        <button id="add-user" class="bg-blue-500 text-white px-4 py-2 rounded mb-4">Add User</button>
+        <table class="w-full bg-white shadow rounded">
+          <thead>
+            <tr class="bg-gray-200">
+              <th class="p-2">Username</th>
+              <th class="p-2">Role</th>
+              <th class="p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="user-table"></tbody>
+        </table>
+      </section>
+      <!-- Alerts -->
+      <section id="alerts" class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">Alerts & Notifications</h2>
+        <div id="alert-list" class="bg-white p-4 shadow rounded"></div>
+      </section>
+      <!-- Logs -->
+      <section id="logs">
+        <h2 class="text-xl font-semibold mb-4">System Logs</h2>
+        <button id="export-logs" class="bg-green-500 text-white px-4 py-2 rounded mb-4">Export Logs</button>
+        <div id="log-list" class="bg-white p-4 shadow rounded"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // Login handling
+    let token = localStorage.getItem('token');
+    let currentUser = { username: 'Guest', role: 'Guest' };
+
+    async function login(username, password) {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        token = data.token;
+        localStorage.setItem('token', token);
+        currentUser = JSON.parse(atob(token.split('.')[1]));
+        document.getElementById('user-role').textContent = `Logged in as: ${currentUser.username} (${currentUser.role})`;
+        fetchData();
+      } else {
+        alert('Login failed');
+      }
+    }
+
+    // Fetch data from backend
+    async function fetchData() {
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const [devicesRes, usersRes, alertsRes, logsRes] = await Promise.all([
+        fetch('/api/devices', { headers }),
+        fetch('/api/users', { headers }),
+        fetch('/api/alerts', { headers }),
+        fetch('/api/logs', { headers })
+      ]);
+      const devices = await devicesRes.json();
+      const users = await usersRes.json();
+      const alerts = await alertsRes.json();
+      const logs = await logsRes.json();
+
+      // Update Dashboard
+      document.getElementById('olt-count').textContent = devices.filter(d => d.type === 'OLT').length;
+      document.getElementById('onu-count').textContent = devices.filter(d => d.type === 'ONU').length;
+      document.getElementById('alert-count').textContent = alerts.length;
+      document.getElementById('uptime').textContent = calculateUptime(devices);
+
+      // PON Topology
+      const nodes = new vis.DataSet(devices.map(d => ({
+        id: d.id,
+        label: d.name,
+        group: d.type.toLowerCase()
+      })));
+      const edges = new vis.DataSet([
+        { from: 1, to: 2 },
+        { from: 2, to: 3 },
+        { from: 3, to: 4 },
+        { from: 3, to: 5 }
+      ]);
+      const container = document.getElementById('network');
+      const data = { nodes, edges };
+      const options = {
+        groups: {
+          olt: { shape: 'box', color: '#ff4444' },
+          pon: { shape: 'circle', color: '#ffbb33' },
+          splitter: { shape: 'diamond', color: '#33cc33' },
+          onu: { shape: 'ellipse', color: '#3399ff' }
+        },
+        layout: { hierarchical: { direction: 'UD', sortMethod: 'directed' } }
+      };
+      new vis.Network(container, data, options);
+
+      // Device Table
+      const deviceTable = document.getElementById('device-table');
+      deviceTable.innerHTML = '';
+      devices.forEach(device => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="p-2">${device.name}</td>
+          <td class="p-2">${device.type}</td>
+          <td class="p-2">${device.status}</td>
+          <td class="p-2">${device.ip}</td>
+          <td class="p-2">
+            <button class="bg-blue-500 text-white px-2 py-1 rounded configure-btn" data-id="${device.id}">Configure</button>
+          </td>
+        `;
+        deviceTable.appendChild(row);
+      });
+
+      // User Table
+      const userTable = document.getElementById('user-table');
+      userTable.innerHTML = '';
+      users.forEach(user => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="p-2">${user.username}</td>
+          <td class="p-2">${user.role}</td>
+          <td class="p-2">
+            ${currentUser.role === 'Admin' ? `
+              <button class="bg-blue-500 text-white px-2 py-1 rounded edit-user" data-username="${user.username}">Edit</button>
+              <button class="bg-red-500 text-white px-2 py-1 rounded delete-user" data-username="${user.username}">Delete</button>
+            ` : ''}
+          </td>
+        `;
+        userTable.appendChild(row);
+      });
+
+      // Alerts
+      const alertList = document.getElementById('alert-list');
+      alertList.innerHTML = '';
+      alerts.forEach(alert => {
+        const div = document.createElement('div');
+        div.className = `p-2 mb-2 ${alert.severity === 'Critical' ? 'bg-red-100' : 'bg-yellow-100'}`;
+        div.textContent = `${alert.time}: ${alert.message} (${alert.severity})`;
+        alertList.appendChild(div);
+      });
+
+      // Logs
+      const logList = document.getElementById('log-list');
+      logList.innerHTML = '';
+      logs.forEach(log => {
+        const div = document.createElement('div');
+        div.className = 'p-2 mb-2 bg-gray-100';
+        div.textContent = `${log.time}: ${log.message}`;
+        logList.appendChild(div);
+      });
+    }
+
+    // Calculate uptime
+    function calculateUptime(devices) {
+      const online = devices.filter(d => d.status === 'Online').length;
+      return devices.length ? Math.round((online / devices.length) * 100) + '%' : '0%';
+    }
+
+    // Event Listeners
+    document.getElementById('add-user').addEventListener('click', async () => {
+      if (currentUser.role !== 'Admin') return alert('Access denied');
+      const username = prompt('Enter username:');
+      const password = prompt('Enter password:');
+      const role = prompt('Enter role (Admin/Operator):');
+      if (username && password && role) {
+        await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ username, password, role })
+        });
+        fetchData();
+      }
+    });
+
+    document.getElementById('add-device').addEventListener('click', async () => {
+      if (currentUser.role !== 'Admin') return alert('Access denied');
+      const name = prompt('Enter device name:');
+      const type = prompt('Enter type (OLT/ONU):');
+      const ip = prompt('Enter IP address:');
+      if (name && type && ip) {
+        await fetch('/api/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ name, type, ip, status: 'Online' })
+        });
+        fetchData();
+      }
+    });
+
+    document.getElementById('logout').addEventListener('click', () => {
+      localStorage.removeItem('token');
+      token = null;
+      currentUser = { username: 'Guest', role: 'Guest' };
+      document.getElementById('user-role').textContent = 'Logged in as: Guest';
+      fetchData();
+    });
+
+    document.getElementById('export-logs').addEventListener('click', async () => {
+      const response = await fetch('/api/logs/export', { headers: { 'Authorization': `Bearer ${token}` } });
+      const logs = await response.json();
+      const blob = new Blob([logs.map(l => `${l.time}: ${l.message}`).join('\n')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nms_logs.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Initial login prompt
+    if (!token) {
+      const username = prompt('Enter username (default: admin):') || 'admin';
+      const password = prompt('Enter password (default: admin123):') || 'admin123';
+      login(username, password);
+    } else {
+      fetchData();
+    }
+  </script>
+</body>
+</html>
